@@ -21,9 +21,7 @@ Basic Usage
 
 1. Update pymunk to python3 by CDing into its directory and running  ```2to3 -w *.py```
 
-2. First, you need to train a model. This will save weights to the `saved-models` folder. *You may need to create this folder before running*. You can train the model by running `python3 learning.py`
-
-It can take anywhere from an hour to 36 hours to train a model, depending on the complexity of the network and the size of your sample. However, it will spit out weights every 25,000 frames, so you can move on to the next step in much less time.
+2. First, you need to train a model. This will save weights to the `saved-models` folder. *You may need to create this folder before running*. You can train the model by running `python3 learning.py` It can take anywhere from an hour to 36 hours to train a model, depending on the complexity of the network and the size of your sample. However, it will spit out weights every 25,000 frames, so you can move on to the next step in much less time.
 
 3. Edit the `nn.py` file to change the path name for the model you want to load. Sorry about this, I know it should be a command line argument. Then, watch the car drive itself around the obstacles! Run `python3 playing.py`
 
