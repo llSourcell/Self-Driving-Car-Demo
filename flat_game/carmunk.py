@@ -7,7 +7,7 @@ from pygame.color import THECOLORS
 
 import pymunk
 from pymunk.vec2d import Vec2d
-from pymunk.pygame_util import draw
+from pymunk.pygame_util import DrawOptions
 
 # PyGame init
 width = 1000
@@ -22,6 +22,10 @@ screen.set_alpha(None)
 # Showing sensors and redrawing slows things down.
 show_sensors = True
 draw_screen = True
+
+
+def draw(screen, space):
+    space.debug_draw(DrawOptions(screen))
 
 
 class GameState:
@@ -72,7 +76,7 @@ class GameState:
         self.create_cat()
 
     def create_obstacle(self, x, y, r):
-        c_body = pymunk.Body(pymunk.inf, pymunk.inf)
+        c_body = pymunk.Body(body_type=pymunk.Body.STATIC)
         c_shape = pymunk.Circle(c_body, r)
         c_shape.elasticity = 1.0
         c_body.position = x, y
@@ -92,6 +96,7 @@ class GameState:
         self.space.add(self.cat_body, self.cat_shape)
 
     def create_car(self, x, y, r):
+        print ('creating car')
         inertia = pymunk.moment_for_circle(1, 0, 14, (0, 0))
         self.car_body = pymunk.Body(1, inertia)
         self.car_body.position = x, y
@@ -100,21 +105,29 @@ class GameState:
         self.car_shape.elasticity = 1.0
         self.car_body.angle = r
         driving_direction = Vec2d(1, 0).rotated(self.car_body.angle)
-        self.car_body.apply_impulse(driving_direction)
+        # self.car_body.apply_impulse(driving_direction)
+        # modify this for local
+        self.car_body.apply_impulse_at_world_point(driving_direction)
         self.space.add(self.car_body, self.car_shape)
+
+        print('finished creating car')
 
     def frame_step(self, action):
         if action == 0:  # Turn left.
+            print('turning left')
             self.car_body.angle -= .2
         elif action == 1:  # Turn right.
+            print('turning right')
             self.car_body.angle += .2
 
         # Move obstacles.
         if self.num_steps % 100 == 0:
+            print('moving obstacles')
             self.move_obstacles()
 
         # Move cat.
         if self.num_steps % 5 == 0:
+            print('moving cat')
             self.move_cat()
 
         driving_direction = Vec2d(1, 0).rotated(self.car_body.angle)

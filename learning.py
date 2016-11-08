@@ -31,7 +31,10 @@ def train_net(model, params):
     loss_log = []
 
     # Create a new game instance.
+    print('creating game')
     game_state = carmunk.GameState()
+    print('finished creating game')
+
 
     # Get initial state by doing nothing and getting the state.
     _, state = game_state.frame_step((2))
