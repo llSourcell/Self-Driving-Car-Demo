@@ -21,6 +21,7 @@ class LossHistory(Callback):
 def neural_net(num_sensors, params, load=''):
     model = Sequential()
 
+    print(params)
     # First layer.
     model.add(Dense(
         params[0], init='lecun_uniform', input_shape=(num_sensors,)

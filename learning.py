@@ -6,7 +6,7 @@ from nn import neural_net, LossHistory
 import os.path
 import timeit
 
-NUM_INPUT = 3
+NUM_INPUT = 8
 GAMMA = 0.9  # Forgetting.
 TUNING = False  # If False, just use arbitrary, pre-selected params.
 
@@ -143,14 +143,18 @@ def process_minibatch(minibatch, model):
     for memory in minibatch:
         # Get stored values.
         old_state_m, action_m, reward_m, new_state_m = memory
+
         # Get prediction on old state.
         old_qval = model.predict(old_state_m, batch_size=1)
+
         # Get prediction on new state.
         newQ = model.predict(new_state_m, batch_size=1)
+
         # Get our best move. I think?
         maxQ = np.max(newQ)
         y = np.zeros((1, 3))
         y[:] = old_qval[:]
+
         # Check for terminal state.
         if reward_m != -500:  # non-terminal state
             update = (reward_m + (GAMMA * maxQ))
