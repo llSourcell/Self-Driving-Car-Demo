@@ -50,7 +50,7 @@ def train_net(model, params):
 
         # Choose an action.
         if random.random() < epsilon or t < observe:
-            action = np.random.randint(0, 3)  # random
+            action = np.random.randint(0, 5)  # random
         else:
             # Get Q values for each action.
             qval = model.predict(state, batch_size=1)
@@ -91,7 +91,7 @@ def train_net(model, params):
             epsilon -= (1/train_frames)
 
         # We died, so update stuff.
-        if reward == -500:
+        if reward == -2500:
             # Log the car's distance at this T.
             data_collect.append([t, car_distance])
 
@@ -152,18 +152,18 @@ def process_minibatch(minibatch, model):
 
         # Get our best move. I think?
         maxQ = np.max(newQ)
-        y = np.zeros((1, 3))
+        y = np.zeros((1, 5))
         y[:] = old_qval[:]
 
         # Check for terminal state.
-        if reward_m != -500:  # non-terminal state
+        if reward_m != -2500:  # non-terminal state
             update = (reward_m + (GAMMA * maxQ))
         else:  # terminal state
             update = reward_m
         # Update the value for the action we took.
         y[0][action_m] = update
         X_train.append(old_state_m.reshape(NUM_INPUT,))
-        y_train.append(y.reshape(3,))
+        y_train.append(y.reshape(5,))
 
     X_train = np.array(X_train)
     y_train = np.array(y_train)

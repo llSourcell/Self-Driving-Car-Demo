@@ -20,13 +20,12 @@ clock = pygame.time.Clock()
 screen.set_alpha(None)
 
 # Showing sensors and redrawing slows things down.
-show_sensors = True
-draw_screen = True
+show_sensors = False
+draw_screen = False
 
 
 def draw(screen, space):
     space.debug_draw(DrawOptions(screen))
-
 
 class GameState:
     def __init__(self):
@@ -42,6 +41,15 @@ class GameState:
 
         # Record steps.
         self.num_steps = 0
+
+        #veloicty contraints
+        self.velocity_max = 1000
+        self.velocity_min = -50
+        self.velocity_init = 100
+        self.velocity = self.velocity_init
+
+        self.x_last = 0
+        self.y_last = 0
 
         # Create walls.
         static = [
@@ -120,8 +128,19 @@ class GameState:
     def frame_step(self, action):
         if action == 0:  # Turn left.
             self.car_body.angle -= .2
+
         elif action == 1:  # Turn right.
             self.car_body.angle += .2
+
+        elif action == 2:  # accelerate.
+            self.velocity += 10
+            if self.velocity > self.velocity_max:
+                self.velocity = self.velocity_max
+
+        elif action == 3:  # decelerate.
+            self.velocity -= 10
+            if self.velocity > self.velocity_max:
+                self.velocity = self.velocity_max
 
         # Move obstacles.
         if self.num_steps % 100 == 0:
@@ -132,31 +151,43 @@ class GameState:
             self.move_cat()
 
         driving_direction = Vec2d(1, 0).rotated(self.car_body.angle)
-        self.car_body.velocity = 100 * driving_direction
+        self.car_body.velocity = self.velocity * driving_direction
+
+        # advance the space
+        self.space.step(1./10)
+        clock.tick()
 
         # Update the screen and stuff.
         screen.fill(THECOLORS["black"])
         draw(screen, self.space)
-        self.space.step(1./10)
+
         if draw_screen:
             pygame.display.flip()
-        clock.tick()
+
 
         # Get the current location and the readings there.
         x, y = self.car_body.position
         readings = self.get_sonar_readings(x, y, self.car_body.angle)
         state = np.array([readings])
 
+        #create a rewards based on distance moved
+        distance_traveled = math.sqrt(math.pow(self.x_last - x, 2) + \
+                            math.pow(self.y_last - y, 2))
+
+        self.x_last = x
+        self.y_last = y
+
         # Set the reward.
         # Car crashed when any reading == 1
         if self.car_is_crashed(readings):
             self.crashed = True
-            reward = -500
+            reward = -2500
             self.recover_from_crash(driving_direction)
         else:
             # Higher readings are better, so return the sum.
-            reward = -5 + int(self.sum_readings(readings) / 10)
+            reward = distance_traveled
         self.num_steps += 1
+
 
         return reward, state
 
@@ -175,7 +206,7 @@ class GameState:
             cat['body'].velocity = speed * direction
 
     def car_is_crashed(self, readings):
-        if readings[0] == 1 or readings[1] == 1 or readings[2] == 1:
+        if len([x for x in readings if x == 1]):
             return True
         else:
             return False
@@ -185,8 +216,10 @@ class GameState:
         We hit something, so recover.
         """
         while self.crashed:
-            # Go backwards.
-            self.car_body.velocity = -100 * driving_direction
+            # Go reverse of current direction.
+            epsilon = .01 # to avoid division by zero error
+            self.car_body.velocity = -((self.velocity + epsilon)/(self.velocity + epsilon)) * \
+                                     self.velocity_init * driving_direction
             self.crashed = False
             for i in range(10):
                 self.car_body.angle += .2  # Turn a little.
@@ -196,6 +229,8 @@ class GameState:
                 if draw_screen:
                     pygame.display.flip()
                 clock.tick()
+
+            self.velocity = self.velocity_init
 
     def sum_readings(self, readings):
         """Sum the number of non-zero readings."""
@@ -264,7 +299,7 @@ class GameState:
 
     def make_sonar_arm(self, x, y):
         spread = 10  # Default spread.
-        distance = 30  # Gap before first sensor.
+        distance = 20  # Gap before first sensor.
         arm_points = []
         # Make an arm. We build it flat because we'll rotate it about the
         # center later.
@@ -286,7 +321,7 @@ class GameState:
         return int(new_x), int(new_y)
 
     def get_track_or_not(self, reading):
-        if reading == THECOLORS['black']:
+        if reading == THECOLORS['black'] or reading == THECOLORS['green']:
             return 0
         else:
             return 1
