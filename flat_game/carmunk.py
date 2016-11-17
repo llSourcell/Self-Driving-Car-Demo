@@ -19,18 +19,17 @@ clock = pygame.time.Clock()
 # Turn off alpha since we don't use it.
 screen.set_alpha(None)
 
-# Showing sensors and redrawing slows things down.
-show_sensors = False
-draw_screen = False
-
 
 def draw(screen, space):
     space.debug_draw(DrawOptions(screen))
 
 class GameState:
-    def __init__(self):
+    def __init__(self, display_hidden=True):
         # Global-ish.
         self.crashed = False
+
+        # A map of visited places
+        self.map = {}
 
         # Physics stuff.
         self.space = pymunk.Space()
@@ -48,8 +47,8 @@ class GameState:
         self.velocity_init = 100
         self.velocity = self.velocity_init
 
-        self.x_last = 0
-        self.y_last = 0
+        self.x_last = None
+        self.y_last = None
 
         # Create walls.
         static = [
@@ -81,7 +80,11 @@ class GameState:
         self.obstacles.append(self.create_obstacle(600, 600, 35))
 
         # Create cats.
-        self.cats = [self.create_cat() for _ in range(3)]
+        self.cats = [self.create_cat() for _ in range(10)]
+
+        # if training, turn off display
+        self.show_sensors = not display_hidden
+        self.draw_screen = not display_hidden
 
     def create_obstacle(self, x, y, r):
         c_body = pymunk.Body(body_type=pymunk.Body.STATIC)
@@ -138,7 +141,13 @@ class GameState:
                 self.velocity = self.velocity_max
 
         elif action == 3:  # decelerate.
-            self.velocity -= 10
+            if self.velocity > 0:
+                self.velocity -= 30
+                if self.velocity < 0:
+                    self.velocity = 0
+            else:
+                self.velocity -= 10
+
             if self.velocity > self.velocity_max:
                 self.velocity = self.velocity_max
 
@@ -161,7 +170,7 @@ class GameState:
         screen.fill(THECOLORS["black"])
         draw(screen, self.space)
 
-        if draw_screen:
+        if self.draw_screen:
             pygame.display.flip()
 
 
@@ -171,7 +180,9 @@ class GameState:
         state = np.array([readings])
 
         #create a rewards based on distance moved
-        distance_traveled = math.sqrt(math.pow(self.x_last - x, 2) + \
+        distance_traveled = 0
+        if self.x_last and self.y_last:
+            distance_traveled = math.sqrt(math.pow(self.x_last - x, 2) + \
                             math.pow(self.y_last - y, 2))
 
         self.x_last = x
@@ -181,13 +192,25 @@ class GameState:
         # Car crashed when any reading == 1
         if self.car_is_crashed(readings):
             self.crashed = True
-            reward = -2500
+            reward = -2000 * (2 + float(abs(self.velocity))/self.velocity_max)
             self.recover_from_crash(driving_direction)
         else:
-            # Higher readings are better, so return the sum.
-            reward = distance_traveled
-        self.num_steps += 1
+            # Higher readings are better, so return the double the distance.
+            reward = 2 * distance_traveled
 
+
+            # reward for visiting new places
+            if not (x, y) in self.map:
+                self.map[(x, y)] = True
+                reward += 5
+
+            # if velocity is reverse, punish it proportionally
+            if self.velocity < 0:
+                reward = self.velocity
+            else:
+                reward += float(self.velocity)/self.velocity_max * reward
+
+        self.num_steps += 1
 
         return reward, state
 
@@ -226,11 +249,27 @@ class GameState:
                 screen.fill(THECOLORS["red"])  # Red is scary!
                 draw(screen, self.space)
                 self.space.step(1./10)
-                if draw_screen:
+                if self.draw_screen:
                     pygame.display.flip()
                 clock.tick()
 
             self.velocity = self.velocity_init
+            x, y = self.car_body.position
+
+            if x < 0:
+                x = 5
+            if x > width:
+                x = width - 5
+
+            if y < 0:
+                y = 5
+            if y > height:
+                y = height - 5
+
+            self.car_body.position = x, y
+
+        self.x_last = None
+        self.y_last = None
 
     def sum_readings(self, readings):
         """Sum the number of non-zero readings."""
@@ -263,7 +302,7 @@ class GameState:
             readings.append(distance)
 
 
-        if show_sensors:
+        if self.show_sensors:
             pygame.display.update()
 
         return readings
@@ -291,7 +330,7 @@ class GameState:
                 if self.get_track_or_not(obs) != 0:
                     return i
 
-            if show_sensors:
+            if self.show_sensors:
                 pygame.draw.circle(screen, (255, 255, 255), (rotated_p), 2)
 
         # Return the distance for the arm.

@@ -32,7 +32,7 @@ def train_net(model, params):
 
     # Create a new game instance.
     print('creating game')
-    game_state = carmunk.GameState()
+    game_state = carmunk.GameState(display_hidden=True)
     print('finished creating game')
 
 
@@ -42,6 +42,8 @@ def train_net(model, params):
     # Let's time it.
     start_time = timeit.default_timer()
 
+
+    total_reward = 0
     # Run the frames.
     while t < train_frames:
 
@@ -90,8 +92,12 @@ def train_net(model, params):
         if epsilon > 0.1 and t > observe:
             epsilon -= (1/train_frames)
 
+
+        #update total_reward
+        total_reward += reward
+
         # We died, so update stuff.
-        if reward == -2500:
+        if reward <= -10:
             # Log the car's distance at this T.
             data_collect.append([t, car_distance])
 
@@ -104,11 +110,12 @@ def train_net(model, params):
             fps = car_distance / tot_time
 
             # Output some stuff so we can watch.
-            print("Max: %d at %d\tepsilon %f\t(%d)\t%f fps" %
-                  (max_car_distance, t, epsilon, car_distance, fps))
+            print("Max: %d at %d\tepsilon %f\t(%d)\t%f fps %s total reward" %
+                  (max_car_distance, t, epsilon, car_distance, fps, total_reward))
 
             # Reset.
             car_distance = 0
+            total_reward = 0
             start_time = timeit.default_timer()
 
         # Save the model every 25,000 frames.
@@ -156,7 +163,7 @@ def process_minibatch(minibatch, model):
         y[:] = old_qval[:]
 
         # Check for terminal state.
-        if reward_m != -2500:  # non-terminal state
+        if reward_m > -1000:  # non-terminal state
             update = (reward_m + (GAMMA * maxQ))
         else:  # terminal state
             update = reward_m
