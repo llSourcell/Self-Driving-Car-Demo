@@ -7,7 +7,7 @@ from pygame.color import THECOLORS
 
 import pymunk
 from pymunk.vec2d import Vec2d
-from pymunk.pygame_util import draw
+from pymunk.pygame_util import DrawOptions
 
 # PyGame init
 width = 1000
@@ -19,15 +19,17 @@ clock = pygame.time.Clock()
 # Turn off alpha since we don't use it.
 screen.set_alpha(None)
 
-# Showing sensors and redrawing slows things down.
-show_sensors = True
-draw_screen = True
 
+def draw(screen, space):
+    space.debug_draw(DrawOptions(screen))
 
 class GameState:
-    def __init__(self):
+    def __init__(self, display_hidden=True):
         # Global-ish.
         self.crashed = False
+
+        # A map of visited places
+        self.map = {}
 
         # Physics stuff.
         self.space = pymunk.Space()
@@ -38,6 +40,15 @@ class GameState:
 
         # Record steps.
         self.num_steps = 0
+
+        #veloicty contraints
+        self.velocity_max = 1000
+        self.velocity_min = -50
+        self.velocity_init = 100
+        self.velocity = self.velocity_init
+
+        self.x_last = None
+        self.y_last = None
 
         # Create walls.
         static = [
@@ -68,12 +79,17 @@ class GameState:
         self.obstacles.append(self.create_obstacle(700, 200, 125))
         self.obstacles.append(self.create_obstacle(600, 600, 35))
 
-        # Create a cat.
-        self.create_cat()
+        # Create cats.
+        self.cats = [self.create_cat() for _ in range(10)]
+
+        # if training, turn off display
+        self.show_sensors = not display_hidden
+        self.draw_screen = not display_hidden
 
     def create_obstacle(self, x, y, r):
-        c_body = pymunk.Body(pymunk.inf, pymunk.inf)
+        c_body = pymunk.Body(body_type=pymunk.Body.STATIC)
         c_shape = pymunk.Circle(c_body, r)
+        #c_shape = pymunk.Poly(c_body,[(5,5), (-5,5), (0,10)], radius =r)
         c_shape.elasticity = 1.0
         c_body.position = x, y
         c_shape.color = THECOLORS["blue"]
@@ -82,16 +98,21 @@ class GameState:
 
     def create_cat(self):
         inertia = pymunk.moment_for_circle(1, 0, 14, (0, 0))
-        self.cat_body = pymunk.Body(1, inertia)
-        self.cat_body.position = 50, height - 100
-        self.cat_shape = pymunk.Circle(self.cat_body, 30)
-        self.cat_shape.color = THECOLORS["orange"]
-        self.cat_shape.elasticity = 1.0
-        self.cat_shape.angle = 0.5
-        direction = Vec2d(1, 0).rotated(self.cat_body.angle)
-        self.space.add(self.cat_body, self.cat_shape)
+        cat = {
+            "body" : pymunk.Body(1, inertia)
+        }
+        cat['shape'] = pymunk.Circle(cat['body'], 30)
+        cat['body'].position = 50, height - 100
+        cat['shape'].color = THECOLORS["orange"]
+        cat['shape'].elasticity = 1.0
+        cat['shape'].angle = 0.5
+        direction = Vec2d(1, 0).rotated(cat['body'].angle)
+        self.space.add(cat['body'], cat['shape'])
+
+        return cat
 
     def create_car(self, x, y, r):
+        print ('creating car')
         inertia = pymunk.moment_for_circle(1, 0, 14, (0, 0))
         self.car_body = pymunk.Body(1, inertia)
         self.car_body.position = x, y
@@ -100,14 +121,35 @@ class GameState:
         self.car_shape.elasticity = 1.0
         self.car_body.angle = r
         driving_direction = Vec2d(1, 0).rotated(self.car_body.angle)
-        self.car_body.apply_impulse(driving_direction)
+        # self.car_body.apply_impulse(driving_direction)
+        # modify this for local
+        self.car_body.apply_impulse_at_world_point(driving_direction)
         self.space.add(self.car_body, self.car_shape)
+
+        print('finished creating car')
 
     def frame_step(self, action):
         if action == 0:  # Turn left.
             self.car_body.angle -= .2
+
         elif action == 1:  # Turn right.
             self.car_body.angle += .2
+
+        elif action == 2:  # accelerate.
+            self.velocity += 10
+            if self.velocity > self.velocity_max:
+                self.velocity = self.velocity_max
+
+        elif action == 3:  # decelerate.
+            if self.velocity > 0:
+                self.velocity -= 30
+                if self.velocity < 0:
+                    self.velocity = 0
+            else:
+                self.velocity -= 10
+
+            if self.velocity > self.velocity_max:
+                self.velocity = self.velocity_max
 
         # Move obstacles.
         if self.num_steps % 100 == 0:
@@ -118,30 +160,56 @@ class GameState:
             self.move_cat()
 
         driving_direction = Vec2d(1, 0).rotated(self.car_body.angle)
-        self.car_body.velocity = 100 * driving_direction
+        self.car_body.velocity = self.velocity * driving_direction
+
+        # advance the space
+        self.space.step(1./10)
+        clock.tick()
 
         # Update the screen and stuff.
         screen.fill(THECOLORS["black"])
         draw(screen, self.space)
-        self.space.step(1./10)
-        if draw_screen:
+
+        if self.draw_screen:
             pygame.display.flip()
-        clock.tick()
+
 
         # Get the current location and the readings there.
         x, y = self.car_body.position
         readings = self.get_sonar_readings(x, y, self.car_body.angle)
         state = np.array([readings])
 
+        #create a rewards based on distance moved
+        distance_traveled = 0
+        if self.x_last and self.y_last:
+            distance_traveled = math.sqrt(math.pow(self.x_last - x, 2) + \
+                            math.pow(self.y_last - y, 2))
+
+        self.x_last = x
+        self.y_last = y
+
         # Set the reward.
         # Car crashed when any reading == 1
         if self.car_is_crashed(readings):
             self.crashed = True
-            reward = -500
+            reward = -2000 * (2 + float(abs(self.velocity))/self.velocity_max)
             self.recover_from_crash(driving_direction)
         else:
-            # Higher readings are better, so return the sum.
-            reward = -5 + int(self.sum_readings(readings) / 10)
+            # Higher readings are better, so return the double the distance.
+            reward = 2 * distance_traveled
+
+
+            # reward for visiting new places
+            if not (x, y) in self.map:
+                self.map[(x, y)] = True
+                reward += 5
+
+            # if velocity is reverse, punish it proportionally
+            if self.velocity < 0:
+                reward = self.velocity
+            else:
+                reward += float(self.velocity)/self.velocity_max * reward
+
         self.num_steps += 1
 
         return reward, state
@@ -154,13 +222,14 @@ class GameState:
             obstacle.velocity = speed * direction
 
     def move_cat(self):
-        speed = random.randint(20, 200)
-        self.cat_body.angle -= random.randint(-1, 1)
-        direction = Vec2d(1, 0).rotated(self.cat_body.angle)
-        self.cat_body.velocity = speed * direction
+        for cat in self.cats:
+            speed = random.randint(20, 200)
+            cat['body'].angle -= random.randint(-1, 1)
+            direction = Vec2d(1, 0).rotated(cat['body'].angle)
+            cat['body'].velocity = speed * direction
 
     def car_is_crashed(self, readings):
-        if readings[0] == 1 or readings[1] == 1 or readings[2] == 1:
+        if len([x for x in readings if x == 1]):
             return True
         else:
             return False
@@ -170,17 +239,37 @@ class GameState:
         We hit something, so recover.
         """
         while self.crashed:
-            # Go backwards.
-            self.car_body.velocity = -100 * driving_direction
+            # Go reverse of current direction.
+            epsilon = .01 # to avoid division by zero error
+            self.car_body.velocity = -((self.velocity + epsilon)/(self.velocity + epsilon)) * \
+                                     self.velocity_init * driving_direction
             self.crashed = False
             for i in range(10):
                 self.car_body.angle += .2  # Turn a little.
                 screen.fill(THECOLORS["red"])  # Red is scary!
                 draw(screen, self.space)
                 self.space.step(1./10)
-                if draw_screen:
+                if self.draw_screen:
                     pygame.display.flip()
                 clock.tick()
+
+            self.velocity = self.velocity_init
+            x, y = self.car_body.position
+
+            if x < 0:
+                x = 5
+            if x > width:
+                x = width - 5
+
+            if y < 0:
+                y = 5
+            if y > height:
+                y = height - 5
+
+            self.car_body.position = x, y
+
+        self.x_last = None
+        self.y_last = None
 
     def sum_readings(self, readings):
         """Sum the number of non-zero readings."""
@@ -199,16 +288,21 @@ class GameState:
         in a sonar "arm" is non-zero, then that arm returns a distance of 5.
         """
         # Make our arms.
-        arm_left = self.make_sonar_arm(x, y)
-        arm_middle = arm_left
-        arm_right = arm_left
+        arms = [(self.make_sonar_arm(x, y), i) for i in [0,
+            math.pi/4, -math.pi/4, math.pi/2, -math.pi/2,
+            3*math.pi/4, -3*math.pi/4, math.pi]]
+
+        # arms = [(self.make_sonar_arm(x, y), i) for i in [0]]
+
 
         # Rotate them and get readings.
-        readings.append(self.get_arm_distance(arm_left, x, y, angle, 0.75))
-        readings.append(self.get_arm_distance(arm_middle, x, y, angle, 0))
-        readings.append(self.get_arm_distance(arm_right, x, y, angle, -0.75))
+        for arm, a in arms:
 
-        if show_sensors:
+            distance = self.get_arm_distance(arm, x, y, angle, a)
+            readings.append(distance)
+
+
+        if self.show_sensors:
             pygame.display.update()
 
         return readings
@@ -236,7 +330,7 @@ class GameState:
                 if self.get_track_or_not(obs) != 0:
                     return i
 
-            if show_sensors:
+            if self.show_sensors:
                 pygame.draw.circle(screen, (255, 255, 255), (rotated_p), 2)
 
         # Return the distance for the arm.
@@ -254,6 +348,7 @@ class GameState:
         return arm_points
 
     def get_rotated_point(self, x_1, y_1, x_2, y_2, radians):
+
         # Rotate x_2, y_2 around x_1, y_1 by angle.
         x_change = (x_2 - x_1) * math.cos(radians) + \
             (y_2 - y_1) * math.sin(radians)
@@ -261,10 +356,11 @@ class GameState:
             (x_1 - x_2) * math.sin(radians)
         new_x = x_change + x_1
         new_y = height - (y_change + y_1)
+
         return int(new_x), int(new_y)
 
     def get_track_or_not(self, reading):
-        if reading == THECOLORS['black']:
+        if reading == THECOLORS['black'] or reading == THECOLORS['green']:
             return 0
         else:
             return 1

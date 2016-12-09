@@ -6,7 +6,7 @@ from nn import neural_net, LossHistory
 import os.path
 import timeit
 
-NUM_INPUT = 3
+NUM_INPUT = 8
 GAMMA = 0.9  # Forgetting.
 TUNING = False  # If False, just use arbitrary, pre-selected params.
 
@@ -31,7 +31,10 @@ def train_net(model, params):
     loss_log = []
 
     # Create a new game instance.
-    game_state = carmunk.GameState()
+    print('creating game')
+    game_state = carmunk.GameState(display_hidden=True)
+    print('finished creating game')
+
 
     # Get initial state by doing nothing and getting the state.
     _, state = game_state.frame_step((2))
@@ -39,6 +42,8 @@ def train_net(model, params):
     # Let's time it.
     start_time = timeit.default_timer()
 
+
+    total_reward = 0
     # Run the frames.
     while t < train_frames:
 
@@ -47,7 +52,7 @@ def train_net(model, params):
 
         # Choose an action.
         if random.random() < epsilon or t < observe:
-            action = np.random.randint(0, 3)  # random
+            action = np.random.randint(0, 5)  # random
         else:
             # Get Q values for each action.
             qval = model.predict(state, batch_size=1)
@@ -87,8 +92,12 @@ def train_net(model, params):
         if epsilon > 0.1 and t > observe:
             epsilon -= (1/train_frames)
 
+
+        #update total_reward
+        total_reward += reward
+
         # We died, so update stuff.
-        if reward == -500:
+        if reward <= -10:
             # Log the car's distance at this T.
             data_collect.append([t, car_distance])
 
@@ -101,11 +110,12 @@ def train_net(model, params):
             fps = car_distance / tot_time
 
             # Output some stuff so we can watch.
-            print("Max: %d at %d\tepsilon %f\t(%d)\t%f fps" %
-                  (max_car_distance, t, epsilon, car_distance, fps))
+            print("Max: %d at %d\tepsilon %f\t(%d)\t%f fps %s total reward" %
+                  (max_car_distance, t, epsilon, car_distance, fps, total_reward))
 
             # Reset.
             car_distance = 0
+            total_reward = 0
             start_time = timeit.default_timer()
 
         # Save the model every 25,000 frames.
@@ -140,23 +150,27 @@ def process_minibatch(minibatch, model):
     for memory in minibatch:
         # Get stored values.
         old_state_m, action_m, reward_m, new_state_m = memory
+
         # Get prediction on old state.
         old_qval = model.predict(old_state_m, batch_size=1)
+
         # Get prediction on new state.
         newQ = model.predict(new_state_m, batch_size=1)
+
         # Get our best move. I think?
         maxQ = np.max(newQ)
-        y = np.zeros((1, 3))
+        y = np.zeros((1, 5))
         y[:] = old_qval[:]
+
         # Check for terminal state.
-        if reward_m != -500:  # non-terminal state
+        if reward_m > -1000:  # non-terminal state
             update = (reward_m + (GAMMA * maxQ))
         else:  # terminal state
             update = reward_m
         # Update the value for the action we took.
         y[0][action_m] = update
         X_train.append(old_state_m.reshape(NUM_INPUT,))
-        y_train.append(y.reshape(3,))
+        y_train.append(y.reshape(5,))
 
     X_train = np.array(X_train)
     y_train = np.array(y_train)

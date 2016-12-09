@@ -6,13 +6,13 @@ from flat_game import carmunk
 import numpy as np
 from nn import neural_net
 
-NUM_SENSORS = 3
+NUM_SENSORS = 8
 
 
 def play(model):
 
     car_distance = 0
-    game_state = carmunk.GameState()
+    game_state = carmunk.GameState(display_hidden=False)
 
     # Do nothing to get initial.
     _, state = game_state.frame_step((2))
