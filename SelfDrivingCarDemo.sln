@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.1082
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "self_driving_car_demo", "self_driving_car_demo\self_driving_car_demo.pyproj", "{7E374531-D034-43CD-BB03-5BB600BB2FDE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7E374531-D034-43CD-BB03-5BB600BB2FDE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7E374531-D034-43CD-BB03-5BB600BB2FDE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5768F000-88B7-420A-9B58-5785B3536584}
+	EndGlobalSection
+EndGlobal
